@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\Payment;
+use Exception;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class AsaasPaymentService
 {
@@ -78,8 +80,10 @@ class AsaasPaymentService
             'access_token' => $this->apiKey,
         ])->post("{$this->baseUrl}/customers", $data);
 
-        // Logar erro se não for possível criar o cliente
-        abort_if(!$response->successful(), 400, 'Erro ao criar cliente');
+        if (!$response->successful()) {
+            $error = $response->json();
+            throw new Exception($this->translateAsaasError($error));
+        }
 
         return $response->json();
     }
@@ -107,7 +111,7 @@ class AsaasPaymentService
 
     protected function getAsaasBillingType(string $method)
     {
-        return match($method) {
+        return match ($method) {
             'boleto' => 'BOLETO',
             'credit_card' => 'CREDIT_CARD',
             'pix' => 'PIX',
@@ -115,4 +119,28 @@ class AsaasPaymentService
         };
     }
 
+    protected function translateAsaasError($errorData)
+    {
+        Log::alert('Erro ao processar pagamento', $errorData);
+
+        if (isset($errorData['errors']) && is_array($errorData['errors'])) {
+            $errors = [];
+             foreach ($errorData['errors'] as $error) {
+                $description = $error['description'] ?? '';
+                $errors[] = $description ?: 'Ocorreu um erro no processamento.';
+
+            }
+
+            return implode("\n", array_unique($errors));
+        }
+
+        if (isset($errorData['error'])) {
+            $errorCode = $errorData['error'];
+            return $errorMessages[$errorCode] ??
+                'Ocorreu um erro no processamento do pagamento. Por favor, tente novamente.';
+        }
+
+        return 'Não foi possível processar o pagamento. Por favor, verifique os dados e tente novamente.';
+
+    }
 }

@@ -5,12 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Requests\PaymentRequest;
 use App\Models\Payment;
 use App\Services\AsaasPaymentService;
+use Exception;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
 {
-    public function __construct(protected AsaasPaymentService $paymentService)
-    {}
+    public function __construct(protected AsaasPaymentService $paymentService) {}
 
     public function show()
     {
@@ -19,19 +19,24 @@ class PaymentController extends Controller
 
     public function store(PaymentRequest $request)
     {
-        $payment = $this->paymentService->processPayment($request->all());
+        try {
+            $payment = $this->paymentService->processPayment($request->all());
 
-        if($request->payment_method === 'pix') {
-            $pix = $this->paymentService->getPixQrCodePayment($payment['id']);
-            $payment += [
-                'encodedImage' => $pix['encodedImage'],
-                'payload' => $pix['payload'],
-            ];
+            if ($request->payment_method === 'pix') {
+                $pix = $this->paymentService->getPixQrCodePayment($payment['id']);
+                $payment += [
+                    'encodedImage' => $pix['encodedImage'],
+                    'payload' => $pix['payload'],
+                ];
+            }
+            return redirect()
+                ->route('payment.success')
+                ->with('payment', $payment);
+        } catch (Exception $e) {
+            return redirect()
+                ->route('payment.form')
+                ->with('error',  $e->getMessage());
         }
-
-        return redirect()
-            ->route('payment.success')
-            ->with('payment', $payment);
     }
 
     public function success(Request $request)
@@ -48,6 +53,5 @@ class PaymentController extends Controller
     public function proccessed()
     {
         return Payment::all();
-
     }
 }
